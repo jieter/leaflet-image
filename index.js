@@ -32,8 +32,10 @@ module.exports = function leafletImage(map, callback) {
     layerQueue.awaitAll(layersDone);
 
     function drawTileLayer(l) {
-        if (l instanceof L.TileLayer) layerQueue.defer(handleTileLayer, l);
-        else if (l._heat) layerQueue.defer(handlePathRoot, l._canvas);
+        if ((l instanceof L.TileLayer) ||
+            (L.GridLayer && l instanceof L.GridLayer)) {
+            layerQueue.defer(handleTileLayer, l);
+        } else if (l._heat) layerQueue.defer(handlePathRoot, l._canvas);
     }
 
     function drawMarkerLayer(l) {
@@ -57,7 +59,7 @@ module.exports = function leafletImage(map, callback) {
     }
 
     function handleTileLayer(layer, callback) {
-        var isCanvasLayer = (layer instanceof L.TileLayer.Canvas),
+        var isCanvasLayer = (L.TileLayer.Canvas && layer instanceof L.TileLayer.Canvas),
             canvas = document.createElement('canvas');
 
         canvas.width = dimensions.x;
@@ -107,12 +109,19 @@ module.exports = function leafletImage(map, callback) {
                 .add(origin);
 
             if (tilePoint.y >= 0) {
-                if (isCanvasLayer) {
+                if (layer.getTileUrl) {
+                    var url = addCacheString(layer.getTileUrl(tilePoint));
+                    tileQueue.defer(loadTile, url, tilePos, tileSize);
+                } else if (isCanvasLayer) {
                     var tile = layer._tiles[tilePoint.x + ':' + tilePoint.y];
                     tileQueue.defer(canvasTile, tile, tilePos, tileSize);
                 } else {
-                    var url = addCacheString(layer.getTileUrl(tilePoint));
-                    tileQueue.defer(loadTile, url, tilePos, tileSize);
+                    var tile = layer._tiles[tilePoint.x + ':' + tilePoint.y + ':' + zoom];
+
+                    if (tile) {
+                        tileQueue.defer(canvasTile, tile.el, tilePos, tileSize);
+                    }
+
                 }
             }
         });
@@ -123,7 +132,8 @@ module.exports = function leafletImage(map, callback) {
             callback(null, {
                 img: tile,
                 pos: tilePos,
-                size: tileSize
+                size: tileSize,
+                fromCanvas: true
             });
         }
 
